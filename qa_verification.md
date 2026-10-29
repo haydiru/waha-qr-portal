@@ -13,24 +13,25 @@
 | **TYPO-01** | High-Craft Typography | PASSED | Inter (`-0.025em` tracking) for UI sans; JetBrains Mono (`-0.01em` tracking) for JIDs, PIN slots, timestamps, and status badges. |
 | **AUTH-01** | Dual-Layer Authentication | PASSED | URL token evaluation (`?auth=...`) + 6-slot segmented Master PIN lock box with tactile virtual keypad + 60s rate-limit cooldown after 5 failed attempts. |
 | **LOCK-01** | Anti-Tamper Permanence | PASSED | Zero client-side logout/disconnect controls when session is in `WORKING` status. Prominent loss-aversion anti-tamper security seal displayed. |
+| **PROX-01** | Zero Token Leakage | PASSED | WAHA API keys never passed to client browser. All calls mediated via Node.js Express server with signed HttpOnly cookie. |
+| **SAFE-01** | Whitelist Guard | PASSED | Automatic session logout triggered on WAHA if scanned phone does not match `ALLOWED_PHONE_NUMBER`. |
+| **DOCK-01** | Coolify / Alpine Hardening | PASSED | Multi-layer Dockerfile on Node 20 Alpine with non-root user `node`, healthcheck, and docker-compose on `coolify` network. |
 
 ---
 
 ## 2. Test Execution & Verification Log
 
 ### Test Case 1: JavaScript Syntax & Compilation Validation
-- **Command:** `node -c c:\Website\waha-qr-portal\public\js\sentinel.js`
+- **Command:** `node -c c:\Website\waha-qr-portal\server.js` & `node -c c:\Website\waha-qr-portal\public\js\sentinel.js`
 - **Result:** Exit Code 0 (No syntax errors, strict ES6 compliance).
 
-### Test Case 2: Multi-Viewport & Mobile Touch Ergonomics
-- **Desktop Viewport:** Full technical telemetry header, 6-slot PIN input with keyboard binding, fixed telemetry footer with WIB clock.
-- **Mobile Viewport:** Touch-optimized keypad with min 56px height per button, hidden native input, clean responsive folding of telemetry items.
+### Test Case 2: Endpoint Functional Verification
+- `GET /api/health`: 200 OK (`{ status: "ok", service: "waha-sentinel-gateway", uptime: 7 }`).
+- `POST /api/auth/verify` (Wrong PIN): 401 Unauthorized with remaining attempts count.
+- `POST /api/auth/verify` (Valid PIN `123456`): 200 OK with HttpOnly signed cookie (`sentinel_session`).
+- `GET /api/session/status` (Offline daemon): Gracefully handled with `{ status: "STOPPED", error: "WAHA_UNREACHABLE" }` without crashing process.
 
-### Test Case 3: Interactive Forensic Simulation Testing
-- Built-in simulator drawer (`Ctrl+Shift+D` or bottom-right toggle tab) enables instant state verification across all operational modes:
-  - `LOCKED`: Perimeter gate waiting for PIN.
-  - `TRIGGER_SHAKE`: Tactile GSAP shake on incorrect PIN entry.
-  - `RATE_LIMIT`: 60-second cooldown with real-time countdown timer.
-  - `SCAN_QR_CODE`: Precision architectural QR frame with corner L-crosshairs, radar sweep line, 20s countdown ring, and force-refresh matrix flash.
-  - `WORKING`: Verified account hero card with pulsing emerald green beacon, large formatted WhatsApp phone number (`+62 811-8899-201`), metadata table, and anti-tamper notice.
-  - `STOPPED`: Halted daemon recovery screen with `[ INITIALIZE SESSION ]` CTA and indeterminate segmented marquee progress loader.
+### Test Case 3: Coolify Containerization & GitHub Synchronization
+- **Repository:** `https://github.com/haydiru/waha-qr-portal`
+- **Branch:** `main` (pushed and tracked)
+- **Deployment Artifacts:** `Dockerfile`, `docker-compose.yml`, `.env.example`, `.dockerignore`, `README.md`.
