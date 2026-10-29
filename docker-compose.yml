@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  waha-sentinel:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: waha-sentinel:latest
+    container_name: waha-sentinel
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - WAHA_BASE_URL=${WAHA_BASE_URL:-http://waha:3000}
+      - WAHA_API_KEY=${WAHA_API_KEY:-}
+      - WAHA_SESSION=${WAHA_SESSION:-default}
+      - MASTER_PIN=${MASTER_PIN:-123456}
+      - SECRET_AUTH_TOKEN=${SECRET_AUTH_TOKEN:-SEC_9f4b29a17c0e8281d4e38c92a11b058a}
+      - ALLOWED_PHONE_NUMBER=${ALLOWED_PHONE_NUMBER:-}
+      - SESSION_SECRET=${SESSION_SECRET:-changeme_generate_random_secret_32_chars}
+    networks:
+      - coolify
+
+networks:
+  coolify:
+    external: true

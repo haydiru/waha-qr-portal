@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>WAHA Sentinel Gateway — WhatsApp Session Portal</title>
+  <meta name="description" content="Hardened session pairing gateway and status telemetry portal for WAHA WhatsApp HTTP API.">
+  <meta name="robots" content="noindex, nofollow">
+
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            alabaster: '#FAF9F5',
+            carbon: '#18181B',
+            emerald: {
+              50: '#ECFDF5',
+              100: '#D1FAE5',
+              500: '#10B981',
+              600: '#059669',
+              700: '#047857',
+              800: '#065F46'
+            },
+            amber: {
+              50: '#FFFBEB',
+              500: '#F59E0B',
+              600: '#D97706',
+              700: '#B45309',
+              800: '#92400E'
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+            mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- GSAP Animation Engine -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+
+  <!-- Custom Design System Stylesheet -->
+  <link rel="stylesheet" href="public/css/sentinel.css">
+</head>
+<body class="bg-alabaster min-h-screen text-zinc-900 bg-architectural-grid flex flex-col justify-between selection:bg-zinc-900 selection:text-white">
+
+  <!-- ========================================================================= -->
+  <!-- SCREEN 1: PERIMETER LOCK SCREEN (AUTHENTICATION BARRIER)                  -->
+  <!-- ========================================================================= -->
+  <div id="auth-screen" class="min-h-screen w-full flex flex-col items-center justify-center p-4 sm:p-6 pb-20 relative z-20">
+    
+    <!-- Cryptographic Access Card -->
+    <div id="auth-card" class="card-technical w-full max-w-[430px] p-6 sm:p-8 flex flex-col items-center">
+      
+      <!-- Top Gateway Badge -->
+      <div class="w-full flex items-center justify-between pb-4 border-b border-zinc-200 mb-6">
+        <div class="flex items-center gap-2">
+          <i data-lucide="shield-check" class="w-4 h-4 text-zinc-900 stroke-[1.5]"></i>
+          <span class="text-[11px] font-mono font-semibold tracking-wider text-zinc-800 uppercase">SENTINEL_GATE // ACCESS_RESTRICTED</span>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span class="text-[10px] font-mono text-zinc-500 uppercase">ONLINE</span>
+        </div>
+      </div>
+
+      <!-- Operational Telemetry Chips (Reciprocity Engine UI_SPEC 3.2) -->
+      <div class="w-full card-technical-recessed p-3 mb-6 flex flex-col gap-1.5 text-xs font-mono">
+        <div class="flex justify-between items-center text-zinc-600">
+          <span class="text-zinc-500">BOUND_SESSION:</span>
+          <span class="font-semibold text-zinc-900">default</span>
+        </div>
+        <div class="flex justify-between items-center text-zinc-600">
+          <span class="text-zinc-500">TARGET_DAEMON:</span>
+          <span class="text-zinc-800">WAHA Core (Internal)</span>
+        </div>
+        <div class="flex justify-between items-center text-zinc-600">
+          <span class="text-zinc-500">NETWORK_INGRESS:</span>
+          <span class="text-emerald-700 font-semibold">TLS_ENCRYPTED</span>
+        </div>
+      </div>
+
+      <!-- Authentication Prompt -->
+      <div class="w-full text-center mb-6">
+        <h1 class="text-lg font-semibold tracking-tight text-zinc-900 mb-1">AUTHENTICATE TERMINAL</h1>
+        <p class="text-xs text-zinc-500">Enter the 6-digit Master PIN to unlock the pairing console.</p>
+      </div>
+
+      <!-- Segmented Master PIN Box (6 Slots) -->
+      <div id="pin-slots-container" class="flex gap-2 sm:gap-2.5 justify-center mb-4 cursor-pointer relative" title="Click to enter PIN">
+        <div class="pin-box active" data-index="0"></div>
+        <div class="pin-box" data-index="1"></div>
+        <div class="pin-box" data-index="2"></div>
+        <div class="pin-box" data-index="3"></div>
+        <div class="pin-box" data-index="4"></div>
+        <div class="pin-box" data-index="5"></div>
+
+        <!-- Hidden input for hardware keyboard and mobile native typing -->
+        <input 
+          id="pin-hidden-input" 
+          type="tel" 
+          inputmode="numeric" 
+          maxlength="6" 
+          pattern="[0-9]*" 
+          autocomplete="one-time-code" 
+          class="opacity-0 absolute inset-0 w-full h-full cursor-pointer pointer-events-auto"
+          aria-label="Enter 6-digit Master PIN"
+        />
+      </div>
+
+      <!-- Rate Limit & Error Notices -->
+      <div class="w-full min-h-[28px] flex items-center justify-center text-center mb-4">
+        <p id="pin-error-msg" class="text-xs font-mono text-red-600 font-semibold hidden flex items-center gap-1.5">
+          <i data-lucide="alert-triangle" class="w-3.5 h-3.5 stroke-[2]"></i>
+          AUTHENTICATION FAILED // INVALID CREDENTIAL
+        </p>
+        <p id="pin-attempts-notice" class="text-[11px] font-mono text-zinc-500">
+          6-digit Master PIN required (Default: 123456)
+        </p>
+      </div>
+
+      <!-- Lockout Alert Banner (hidden by default) -->
+      <div id="lockout-banner" class="w-full p-3 bg-red-50 border border-red-200 rounded-md mb-6 hidden">
+        <div class="flex items-center gap-2 text-red-700 text-xs font-mono font-semibold">
+          <i data-lucide="lock" class="w-4 h-4 stroke-[2]"></i>
+          <span>PERIMETER LOCKOUT ACTIVE</span>
+        </div>
+        <p class="text-[11px] text-red-600 font-mono mt-1">
+          Max failed attempts reached. Cooldown: <span id="lockout-countdown" class="font-bold">60s</span>
+        </p>
+      </div>
+
+      <!-- Virtual Ergonomic Keypad (Touch / Mobile Friendly min 56px) -->
+      <div class="w-full grid grid-cols-3 gap-2 mb-6">
+        <button type="button" class="keypad-btn" data-key="1">
+          <span>1</span>
+          <span class="subtext">INIT</span>
+        </button>
+        <button type="button" class="keypad-btn" data-key="2">
+          <span>2</span>
+          <span class="subtext">ABC</span>
+        </button>
+        <button type="button" class="keypad-btn" data-key="3">
+          <span>3</span>
+          <span class="subtext">DEF</span>
+        </button>
+        <button type="button" class="keypad-btn" data-key="4">
+          <span>4</span>
+          <span class="subtext">GHI</span>
+        </button>
+        <button type="button" class="keypad-btn" data-key="5">
+          <span>5</span>
+          <span class="subtext">JKL</span>
+        </button>
+        <button type="button" class="keypad-btn" data-key="6">
+          <span>6</span>
+          <span class="subtext">MNO</span>
+        </button>
+        <button type="button" class="keypad-btn" data-key="7">
+          <span>7</span>
+          <span class="subtext">PQRS</span>
+        </button>
+        <button type="button" class="keypad-btn" data-key="8">
+          <span>8</span>
+          <span class="subtext">TUV</span>
+        </button>
+        <button type="button" class="keypad-btn" data-key="9">
+          <span>9</span>
+          <span class="subtext">WXYZ</span>
+        </button>
+        <button type="button" class="keypad-btn text-xs text-zinc-600 hover:text-zinc-900" data-key="clear">
+          <span class="text-xs font-semibold">CLR</span>
+        </button>
+        <button type="button" class="keypad-btn" data-key="0">
+          <span>0</span>
+          <span class="subtext">+</span>
+        </button>
+        <button type="button" class="keypad-btn" data-key="backspace" aria-label="Backspace">
+          <i data-lucide="delete" class="w-5 h-5 text-zinc-700 stroke-[1.5]"></i>
+        </button>
+      </div>
+
+      <!-- URL Perimeter Auth Status Badge -->
+      <div class="w-full pt-4 border-t border-zinc-200 text-center">
+        <p id="token-banner-text" class="text-[10px] font-mono text-zinc-500 truncate">
+          PERIMETER_AUTH: SEC_9f4b29a17c0e... (VERIFIED)
+        </p>
+      </div>
+
+    </div>
+  </div>
+
+
+  <!-- ========================================================================= -->
+  <!-- SCREEN 2: SENTINEL PORTAL HUB (DYNAMIC STATEFUL INTERFACE)               -->
+  <!-- ========================================================================= -->
+  <div id="portal-screen" class="min-h-screen w-full flex-col justify-between hidden relative z-20 pb-20">
+
+    <!-- Top Technical Navigation & Telemetry Bar -->
+    <header class="w-full bg-white border-b border-zinc-200 px-4 sm:px-8 py-3.5 sticky top-0 z-30 shadow-sm">
+      <div class="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-4">
+        
+        <!-- Brand & Engine Title -->
+        <div class="flex items-center gap-3">
+          <div class="w-7 h-7 rounded bg-zinc-900 text-white flex items-center justify-center font-mono font-bold text-xs">
+            WS
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-semibold tracking-tight text-zinc-900">WAHA SENTINEL</span>
+              <span class="text-[10px] font-mono text-zinc-500 uppercase px-1.5 py-0.5 bg-zinc-100 border border-zinc-200 rounded">GATEWAY_PRO</span>
+            </div>
+            <div class="text-[10px] font-mono text-zinc-500">
+              SESSION: <span id="header-session-badge" class="font-semibold text-zinc-800">default</span> // ENGINE: <span class="text-zinc-800">NOWEB</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Telemetry Indicators -->
+        <div class="flex items-center gap-3 sm:gap-6 text-xs font-mono">
+          <!-- Uptime -->
+          <div class="hidden md:flex items-center gap-1.5 text-zinc-600">
+            <i data-lucide="clock" class="w-3.5 h-3.5 text-zinc-400 stroke-[1.5]"></i>
+            <span class="text-zinc-400 text-[11px]">UPTIME:</span>
+            <span id="header-uptime-display" class="font-semibold text-zinc-800">03h 42m 18s</span>
+          </div>
+
+          <!-- Network Ping -->
+          <div class="hidden sm:flex items-center gap-1.5 text-zinc-600">
+            <i data-lucide="activity" class="w-3.5 h-3.5 text-zinc-400 stroke-[1.5]"></i>
+            <span class="text-zinc-400 text-[11px]">LATENCY:</span>
+            <span id="header-ping-display" class="font-semibold text-zinc-800">18ms</span>
+          </div>
+
+          <!-- Dynamic Status Badge -->
+          <div id="header-status-badge" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-mono font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+            <span id="header-status-dot" class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+            <span id="header-status-text">STATUS: SCAN_QR_CODE</span>
+          </div>
+        </div>
+
+      </div>
+    </header>
+
+    <!-- Goal Gradient Perceived Momentum Bar (UI_SPEC 3.1) -->
+    <div class="w-full bg-zinc-200 h-1 relative overflow-hidden">
+      <div id="goal-progress-bar" class="goal-gradient-bar h-full bg-amber-500" style="width: 70%;"></div>
+    </div>
+    <div class="w-full max-w-6xl mx-auto px-4 sm:px-8 pt-2 flex justify-between text-[10px] font-mono text-zinc-500">
+      <span id="goal-progress-text">MATRIX STREAM ACTIVE // AWAITING CAMERA (70%)</span>
+      <span class="hidden sm:inline">ZERO-KEY-LEAKAGE SERVER PROXY</span>
+    </div>
+
+
+    <!-- ===================================================================== -->
+    <!-- CENTRAL CONTENT VIEWPORTS (MUTUALLY EXCLUSIVE VIA GSAP)               -->
+    <!-- ===================================================================== -->
+    <main class="w-full max-w-2xl mx-auto px-4 py-8 sm:py-12 flex-1 flex flex-col justify-center">
+
+      <!-- =================================================================== -->
+      <!-- VIEWPORT A: QR SCANNER HUB (STATUS: SCAN_QR_CODE)                   -->
+      <!-- =================================================================== -->
+      <div id="scanner-viewport" class="w-full">
+        
+        <div class="card-technical p-6 sm:p-8 flex flex-col items-center corner-crosshairs corner-crosshairs-bottom relative">
+          
+          <!-- Viewport Header -->
+          <div class="w-full flex items-center justify-between pb-4 border-b border-zinc-200 mb-6">
+            <div class="flex items-center gap-2">
+              <i data-lucide="qr-code" class="w-4 h-4 text-zinc-900 stroke-[1.5]"></i>
+              <span class="text-xs font-mono font-semibold tracking-wider text-zinc-900 uppercase">PAIRING_MATRIX // LIVE_FEED</span>
+            </div>
+            
+            <!-- Expiry Circular Countdown Ring (UI_SPEC 5.2) -->
+            <div class="flex items-center gap-2" title="QR Code Expiration Ring">
+              <span class="text-[10px] font-mono text-zinc-500">EXPIRES:</span>
+              <div class="relative w-8 h-8 flex items-center justify-center">
+                <svg class="countdown-svg w-8 h-8" viewBox="0 0 40 40">
+                  <circle class="countdown-circle-bg" cx="20" cy="20" r="16" fill="transparent" stroke-width="3"></circle>
+                  <circle id="qr-countdown-circle" class="countdown-circle-progress" cx="20" cy="20" r="16" fill="transparent" stroke-width="3" stroke-dasharray="100.53" stroke-dashoffset="0"></circle>
+                </svg>
+                <span id="qr-countdown-number" class="absolute text-[10px] font-mono font-bold text-zinc-800">20s</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Architectural QR Pairing Frame -->
+          <div class="relative p-4 bg-white border border-zinc-200 rounded-md shadow-sm mb-6 max-w-[280px] sm:max-w-[300px] w-full aspect-square flex items-center justify-center overflow-hidden">
+            
+            <!-- GSAP Animated Linear Radar Sweep Line -->
+            <div id="qr-radar-line" class="qr-radar-sweep"></div>
+
+            <!-- Real QR Matrix Display (Standalone High-Res SVG Representation) -->
+            <div class="w-full h-full p-2 flex items-center justify-center">
+              <img 
+                id="qr-image" 
+                src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256' width='100%' height='100%'><rect width='256' height='256' fill='white'/><path d='M16 16h64v64h-64zM32 32h32v32h-32zM176 16h64v64h-64zM192 32h32v32h-32zM16 176h64v64h-64zM32 192h32v32h-32zM112 16h32v16h-32zM96 48h16v32h-16zM128 48h32v16h-32zM16 96h16v32h-16zM48 96h48v16h-48zM112 96h16v48h-16zM144 96h48v16h-48zM208 96h32v32h-32zM16 144h32v16h-32zM64 128h32v32h-32zM144 128h16v16h-16zM176 128h48v16h-48zM128 160h16v32h-16zM160 160h48v16h-48zM224 160h16v32h-16zM96 176h16v16h-16zM144 192h16v48h-16zM176 192h32v16h-32zM224 208h16v32h-16zM96 208h32v16h-32zM96 240h48v16h-48zM176 224h32v16h-32z' fill='%2318181B'/></svg>"
+                alt="WhatsApp QR Code Matrix" 
+                class="w-full h-full object-contain select-none"
+              />
+            </div>
+
+          </div>
+
+          <!-- Monospace Guidance Micro-Card -->
+          <div class="w-full card-technical-recessed p-4 mb-6">
+            <div class="text-[11px] font-mono text-zinc-500 uppercase tracking-wider mb-2 font-semibold">PAIRING PROCEDURE:</div>
+            <ol class="text-xs font-mono text-zinc-700 space-y-1.5 list-decimal list-inside">
+              <li>Open official <span class="font-semibold text-zinc-900">WhatsApp</span> on your authorized mobile phone</li>
+              <li>Navigate to <span class="font-semibold text-zinc-900">Settings &gt; Linked Devices &gt; Link a Device</span></li>
+              <li>Point phone camera at this matrix frame to complete handshake</li>
+            </ol>
+          </div>
+
+          <!-- Secondary Action: Force Refresh QR -->
+          <div class="w-full flex justify-between items-center pt-2">
+            <span class="text-[11px] font-mono text-zinc-500 flex items-center gap-1.5">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+              Auto-refreshing stream active
+            </span>
+            <button 
+              id="refresh-qr-btn" 
+              type="button" 
+              class="px-3 py-1.5 text-xs font-mono font-medium text-zinc-800 bg-white border border-zinc-300 hover:border-zinc-900 hover:bg-zinc-50 rounded-md transition-all flex items-center gap-1.5"
+            >
+              <i data-lucide="rotate-cw" class="w-3.5 h-3.5 stroke-[1.5]"></i>
+              <span>FORCE REFRESH QR</span>
+            </button>
+          </div>
+
+        </div>
+
+      </div>
+
+
+      <!-- =================================================================== -->
+      <!-- VIEWPORT B: VERIFIED IDENTITY SHIELD (STATUS: WORKING)              -->
+      <!-- =================================================================== -->
+      <div id="verified-viewport" class="w-full hidden">
+        
+        <div class="card-technical p-6 sm:p-8 flex flex-col items-center corner-crosshairs corner-crosshairs-bottom relative">
+          
+          <!-- Top Verified Badge -->
+          <div class="w-full flex items-center justify-between pb-4 border-b border-zinc-200 mb-6">
+            <div class="flex items-center gap-2">
+              <div class="w-2.5 h-2.5 rounded-full bg-emerald-500 pulsing-beacon"></div>
+              <span class="text-xs font-mono font-semibold tracking-wider text-emerald-800 uppercase">STATUS: WORKING // VERIFIED</span>
+            </div>
+            <div class="flex items-center gap-1 text-[11px] font-mono text-zinc-500">
+              <i data-lucide="lock" class="w-3.5 h-3.5 text-zinc-700 stroke-[1.5]"></i>
+              <span>IMMUTABLE_BINDING</span>
+            </div>
+          </div>
+
+          <!-- Checkmark Icon Animation Anchor -->
+          <div id="verified-checkmark" class="w-16 h-16 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 mb-4 shadow-sm">
+            <i data-lucide="check" class="w-8 h-8 stroke-[2.5]"></i>
+          </div>
+
+          <!-- High-Contrast Formatted Phone Number Display (UI_SPEC 5.3) -->
+          <div class="text-center mb-6">
+            <div class="text-xs font-mono uppercase tracking-wider text-zinc-500 mb-1">AUTHENTICATED WHATSAPP NUMBER</div>
+            <div id="verified-phone-display" class="text-2xl sm:text-3xl font-mono font-bold tracking-tight text-zinc-900">
+              +62 811-8899-201
+            </div>
+            <div class="text-xs font-mono text-emerald-700 font-medium mt-1 flex items-center justify-center gap-1.5">
+              <i data-lucide="shield-alert" class="w-3.5 h-3.5 stroke-[1.5]"></i>
+              <span>SESSION PERMANENTLY BOUND &amp; SECURED</span>
+            </div>
+          </div>
+
+          <!-- Identity Grid Table Matrix (UI_SPEC 5.3) -->
+          <div class="w-full card-technical-recessed p-4 mb-6 text-xs font-mono">
+            <div class="table-data-row flex justify-between items-center py-2">
+              <span class="text-zinc-500">SESSION IDENTIFIER:</span>
+              <span class="font-semibold text-zinc-900">default</span>
+            </div>
+            <div class="table-data-row flex justify-between items-center py-2">
+              <span class="text-zinc-500">PUSH DISPLAY NAME:</span>
+              <span id="verified-push-name" class="font-semibold text-zinc-900">RSD Bot Monitor (Official)</span>
+            </div>
+            <div class="table-data-row flex justify-between items-center py-2">
+              <span class="text-zinc-500">AUTHENTICATED JID:</span>
+              <span id="verified-jid" class="text-zinc-700">628118899201@c.us</span>
+            </div>
+            <div class="table-data-row flex justify-between items-center py-2">
+              <span class="text-zinc-500">SOCKET HEALTH:</span>
+              <span id="verified-socket-health" class="text-emerald-700 font-semibold">CONNECTED // HEALTHY (99.98%)</span>
+            </div>
+            <div class="table-data-row flex justify-between items-center py-2">
+              <span class="text-zinc-500">PAIRING TIMESTAMP:</span>
+              <span id="verified-timestamp" class="text-zinc-700">Today, 08:42:15 WIB</span>
+            </div>
+            <div class="table-data-row flex justify-between items-center py-2">
+              <span class="text-zinc-500">ACCESS POLICY:</span>
+              <span class="text-zinc-900 font-bold">1_SESSION_LOCKED (LOGOUT DISABLED)</span>
+            </div>
+          </div>
+
+          <!-- Loss Aversion Notice & Security Seal (UI_SPEC 3.3) -->
+          <div class="w-full p-3.5 bg-amber-50/70 border border-amber-200/80 rounded-md text-amber-900 text-xs font-mono">
+            <div class="flex items-center gap-2 font-semibold mb-1">
+              <i data-lucide="shield-ban" class="w-4 h-4 text-amber-700 stroke-[1.5]"></i>
+              <span>ANTI-TAMPER LOCKDOWN ENFORCED</span>
+            </div>
+            <p class="text-[11px] text-amber-800 leading-relaxed">
+              Disconnecting or switching accounts will break 12 automated enterprise dispatch workflows. In accordance with zero-trust protocol, manual logout controls are disabled in this portal.
+            </p>
+          </div>
+
+        </div>
+
+      </div>
+
+
+      <!-- =================================================================== -->
+      <!-- VIEWPORT C: HALTED SESSION RECOVERY (STATUS: STOPPED / FAILED)      -->
+      <!-- =================================================================== -->
+      <div id="stopped-viewport" class="w-full hidden">
+        
+        <div class="card-technical p-6 sm:p-8 flex flex-col items-center corner-crosshairs corner-crosshairs-bottom relative">
+          
+          <!-- Viewport Header -->
+          <div class="w-full flex items-center justify-between pb-4 border-b border-zinc-200 mb-6">
+            <div class="flex items-center gap-2">
+              <i data-lucide="alert-octagon" class="w-4 h-4 text-red-600 stroke-[1.5]"></i>
+              <span class="text-xs font-mono font-semibold tracking-wider text-red-700 uppercase">STATUS: STOPPED // DAEMON DORMANT</span>
+            </div>
+            <span class="text-[10px] font-mono text-zinc-500">RECOVERY_MODE</span>
+          </div>
+
+          <div class="w-14 h-14 rounded-full bg-red-50 border border-red-200 flex items-center justify-center text-red-600 mb-4">
+            <i data-lucide="power-off" class="w-7 h-7 stroke-[1.5]"></i>
+          </div>
+
+          <div class="text-center mb-6 max-w-md">
+            <h2 class="text-base font-semibold tracking-tight text-zinc-900 mb-1">WAHA Session Daemon is Inactive</h2>
+            <p id="stopped-msg" class="text-xs text-zinc-600 font-mono">
+              The internal WhatsApp driver is dormant. Tap the button below to initialize the container session and request a fresh pairing matrix.
+            </p>
+          </div>
+
+          <!-- Wake-up CTA Button (UI_SPEC 5.4) -->
+          <div class="w-full max-w-sm mb-4">
+            <button 
+              id="btn-start-session" 
+              type="button" 
+              class="w-full h-11 bg-zinc-900 hover:bg-zinc-800 active:scale-[0.99] text-white rounded-md font-mono text-xs font-semibold tracking-wider transition-all flex items-center justify-center gap-2 border border-zinc-800 shadow-sm"
+            >
+              <span class="text-zinc-400 font-mono">&gt;_</span>
+              <span>[ INITIALIZE SESSION ]</span>
+            </button>
+
+            <!-- Indeterminate Marquee Progress Loader -->
+            <div id="start-session-loader" class="w-full hidden">
+              <div class="indeterminate-loader w-full h-11 bg-zinc-100 border border-zinc-300 rounded-md flex items-center justify-center relative overflow-hidden">
+                <span class="relative z-10 text-xs font-mono font-semibold text-zinc-800">SPINNING UP DAEMON...</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="text-[10px] font-mono text-zinc-400 text-center">
+            SAFE OPERATION: DOES NOT CLEAR EXISTING STORED CREDENTIALS
+          </div>
+
+        </div>
+
+      </div>
+
+    </main>
+
+  </div>
+
+
+  <!-- ========================================================================= -->
+  <!-- TECHNICAL TELEMETRY FOOTER (FIXED ACROSS VIEWPORTS)                       -->
+  <!-- ========================================================================= -->
+  <footer class="fixed bottom-0 left-0 right-0 z-30 bg-white/90 backdrop-blur-md border-t border-zinc-200 px-4 sm:px-8 py-2.5">
+    <div class="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono text-zinc-600">
+      
+      <!-- Timestamp in WIB -->
+      <div class="flex items-center gap-2">
+        <i data-lucide="radio" class="w-3.5 h-3.5 text-emerald-600 stroke-[1.5]"></i>
+        <span id="footer-wib-clock" class="font-medium text-zinc-800">UTC+07:00 [WIB] 09:30:00</span>
+      </div>
+
+      <!-- Infrastructure / Version Telemetry -->
+      <div class="flex items-center gap-4">
+        <span id="footer-ping-display" class="text-zinc-500 hidden sm:inline">PING: 18ms</span>
+        <span class="text-zinc-400 hidden md:inline">|</span>
+        <span class="text-zinc-700 font-semibold tracking-tight">
+          SENTINEL DAEMON v1.2.0 <span class="text-zinc-400 font-normal">// COOLIFY DOCKER NETWORK</span>
+        </span>
+      </div>
+
+    </div>
+  </footer>
+
+
+  <!-- ========================================================================= -->
+  <!-- DISCREET FORENSIC SIMULATION DRAWER (FOR QA VERIFICATION & TESTING)       -->
+  <!-- ========================================================================= -->
+  <div id="simulation-panel" class="fixed bottom-10 right-4 sm:right-6 z-50 card-technical shadow-lg border-zinc-300 w-[290px] sm:w-[320px] collapsed">
+    
+    <!-- Drawer Toggle Header -->
+    <div id="sim-toggle-btn" class="px-3 py-2 bg-zinc-900 text-white rounded-t-md cursor-pointer flex items-center justify-between text-xs font-mono select-none">
+      <div class="flex items-center gap-1.5">
+        <i data-lucide="sliders" class="w-3.5 h-3.5 stroke-[1.5]"></i>
+        <span class="font-semibold">TEST_SIMULATOR</span>
+      </div>
+      <span class="text-[10px] text-zinc-400 font-mono">[Ctrl+Shift+D]</span>
+    </div>
+
+    <!-- Drawer Body -->
+    <div class="p-3 bg-white text-xs font-mono space-y-2">
+      <div class="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold border-b border-zinc-200 pb-1">
+        PORTAL STATE SWITCHER:
+      </div>
+      
+      <div class="grid grid-cols-2 gap-1.5">
+        <button type="button" data-sim-state="LOCKED" class="px-2 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 rounded border border-zinc-300 text-[11px] font-medium text-left">
+          &bull; Lock Screen
+        </button>
+        <button type="button" data-sim-state="TRIGGER_SHAKE" class="px-2 py-1.5 bg-red-50 hover:bg-red-100 text-red-800 rounded border border-red-200 text-[11px] font-medium text-left">
+          &bull; Shake Error
+        </button>
+        <button type="button" data-sim-state="RATE_LIMIT" class="px-2 py-1.5 bg-red-50 hover:bg-red-100 text-red-800 rounded border border-red-200 text-[11px] font-medium text-left">
+          &bull; Rate Limit (60s)
+        </button>
+        <button type="button" data-sim-state="STOPPED" class="px-2 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 rounded border border-zinc-300 text-[11px] font-medium text-left">
+          &bull; State: STOPPED
+        </button>
+        <button type="button" data-sim-state="SCAN_QR_CODE" class="px-2 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded border border-amber-200 text-[11px] font-medium text-left">
+          &bull; State: SCAN_QR
+        </button>
+        <button type="button" data-sim-state="WORKING" class="px-2 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded border border-emerald-200 text-[11px] font-medium text-left">
+          &bull; State: WORKING
+        </button>
+      </div>
+
+      <div class="pt-1 text-[10px] text-zinc-400">
+        Default Master PIN: <span class="font-bold text-zinc-700">123456</span>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- Core Script Controller -->
+  <script src="public/js/sentinel.js"></script>
+</body>
+</html>
